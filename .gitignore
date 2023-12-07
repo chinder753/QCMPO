@@ -1,1 +1,8 @@
-*.pyc
+.gitignore
+
+.idea
+__pycache__
+
+jwtrans.py.bak
+mpo_consw.py.bak
+mpo_direct.py.bak
