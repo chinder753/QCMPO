@@ -9,32 +9,64 @@ from functools import reduce
 # ======
 # AUX
 # ======
-def idnC(sc):
-    assert len(sc) != 0
+
+# (\otimes_{l=j+1}^{N}\mathbb{I}_l)
+def idnC(sc_len: int):
+    assert sc_len != 0
     # I \otimes I \otimes ... \otimes I, total number is len(sc)
-    return numpy.identity(2 ** (len(sc)))
+    return numpy.identity(2 ** (sc_len))
 
-
-def sgnC(sc):
-    assert len(sc) != 0
+# (\otimes_{l=1}^{N}\sigma_l^z)
+def sgnC(sc_len: int):
+    assert sc_len != 0
     sgn = jwtrans.sgn
-    for i in range(len(sc) - 1):
+    # sgn \otimes sgn \otimes ... \otimes sgn, total number is len(sc)
+    for i in range(sc_len - 1):
         sgn = numpy.kron(sgn, jwtrans.sgn)
     return sgn
 
 
-def sqC(sc, ic, iop):
-    assert len(sc)
-    ops = [0] * len(sc)
+# a^+ = (\otimes_{l=1}^{j-1}\sigma_l^z) \otimes ann \otimes (\otimes_{l=j+1}^{N}\mathbb{I}_l)
+# a = (\otimes_{l=1}^{j-1}\sigma_l^z) \otimes cre \otimes (\otimes_{l=j+1}^{N}\mathbb{I}_l)
+def sqC(sc_len: int, ic: int, iop: int):
+    #       cre                 ann
+    #   0.0     0.0         0.0     1.0
+    #   1.0     0.0         0.0     0.0
+    #
+    #       sgn                 idn
+    #   1.0     0.0         1.0     0.0
+    #   0.0    -1.0         0.0     1.0
+    #
+    # sc_len = 5, ic = 1
+    #                  0    1    2    3    4 = sc_len-1
+    # iop = 1  ops = [sgn, cre, idn, idn, idn]
+    # iop = 0  ops = [sgn, ann, idn, idn, idn]
+    #                       ^ic
+    #
+    # sc_len = 7, ic = 5
+    #                  0    1    2    3    4    5    6 = sc_len-1
+    # iop = 1  ops = [sgn, sgn, sgn, sgn, sgn, cre, idn]
+    # iop = 0  ops = [sgn, sgn, sgn, sgn, sgn, ann, idn]
+    #                                           ^ic
+    assert sc_len
+    ops = [0] * sc_len
     if iop == 1:
         ops[ic] = jwtrans.cre
     elif iop == 0:
         ops[ic] = jwtrans.ann
     for i in range(ic):
         ops[i] = jwtrans.sgn
-    for i in range(ic + 1, len(sc)):
+    for i in range(ic + 1, sc_len):
         ops[i] = jwtrans.idn
+    # sc_len = 5, ic = 1
+    # iop = 1  sgn \otimes cre \otimes idn \otimes idn \otimes idn
+    # iop = 0  sgn \otimes ann \otimes idn \otimes idn \otimes idn
+    #
+    # sc_len = 7, ic = 5
+    # iop = 1  sgn \otimes sgn \otimes sgn \otimes sgn \otimes sgn \otimes cre \otimes idn
+    # iop = 0  sgn \otimes sgn \otimes sgn \otimes sgn \otimes sgn \otimes ann \otimes idn
     tmp = reduce(numpy.kron, ops)
+
     return tmp
 
 
@@ -50,7 +82,7 @@ def sqC(sc, ic, iop):
 # ------------
 # w[1,1]=I
 def l1r1(h1e, h2e, sl, sc, sr):
-    tmp = idnC(sc)
+    tmp = idnC(len(sc))
     return tmp
 
 
@@ -58,17 +90,17 @@ def l1r1(h1e, h2e, sl, sc, sr):
 def l1r2(h1e, h2e, sl, sc, sr):
     tmp = numpy.zeros((len(sr), 2 ** len(sc), 2 ** len(sc)))
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        op_p = sqC(len(sc), idxp, 1)
         for idxr, orbr in enumerate(sc):
-            op_r = sqC(sc, idxr, 0)
+            op_r = sqC(len(sc), idxr, 0)
             for idxs, orbs in enumerate(sc):
-                op_s = sqC(sc, idxs, 0)
+                op_s = sqC(len(sc), idxs, 0)
                 # r < s
                 if orbr < orbs:
                     op = op_p @ op_r @ op_s
                     for idxq, orbq in enumerate(sr):
                         tmp[idxq] += h2e[orbp, orbq, orbr, orbs] * op
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sr):
         tmp[idxq] = tmp[idxq].dot(sgn)
     return tmp
@@ -81,19 +113,19 @@ def l1r3(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nr, 2 ** nc, 2 ** nc))
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        op_p = sqC(len(sc), idxp, 1)
         # +h1e
         for idxq, orbq in enumerate(sr):
             tmp[idxq] += h1e[orbp, orbq] * op_p
         for idxq, orbq in enumerate(sc):
-            op_q = sqC(sc, idxq, 1)
+            op_q = sqC(len(sc), idxq, 1)
             if orbp < orbq:
                 for idxr, orbr in enumerate(sc):
-                    op_r = sqC(sc, idxr, 0)
+                    op_r = sqC(len(sc), idxr, 0)
                     op = op_p.dot(op_q.dot(op_r))
                     for idxs, orbs in enumerate(sr):
                         tmp[idxs] += h2e[orbp, orbq, orbr, orbs] * op
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sr):
         tmp[idxq] = tmp[idxq].dot(sgn)
     return tmp
@@ -109,9 +141,9 @@ def l1r4(h1e, h2e, sl, sc, sr):
         exit()
     tmp = numpy.zeros((int(nr * (nr - 1) / 2), 2 ** nc, 2 ** nc))
     for idxr, orbr in enumerate(sc):
-        op_r = sqC(sc, idxr, 0)
+        op_r = sqC(len(sc), idxr, 0)
         for idxs, orbs in enumerate(sc):
-            op_s = sqC(sc, idxs, 0)
+            op_s = sqC(len(sc), idxs, 0)
             if orbr < orbs:
                 op = op_r.dot(op_s)
                 ipq = 0
@@ -133,9 +165,9 @@ def l1r5(h1e, h2e, sl, sc, sr):
         exit()
     tmp = numpy.zeros((int(nr * (nr - 1) / 2), 2 ** nc, 2 ** nc))
     for idxr, orbr in enumerate(sc):
-        op_r = sqC(sc, idxr, 1)
+        op_r = sqC(len(sc), idxr, 1)
         for idxs, orbs in enumerate(sc):
-            op_s = sqC(sc, idxs, 1)
+            op_s = sqC(len(sc), idxs, 1)
             if orbr < orbs:
                 op = op_r.dot(op_s)
                 ipq = 0
@@ -153,9 +185,9 @@ def l1r7(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nc, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sc):
-        tmp[idxr] = -numpy.dot(sqC(sc, idxr, 0), sgn)
+        tmp[idxr] = -numpy.dot(sqC(len(sc), idxr, 0), sgn)
     return tmp
 
 
@@ -168,7 +200,7 @@ def l1r11(h1e, h2e, sl, sc, sr):
     irs = 0
     for idxr, orbr in enumerate(sc):
         for idxs, orbs in enumerate(sc):
-            tmp[irs] = -numpy.dot(sqC(sc, idxr, 1), sqC(sc, idxs, 0))
+            tmp[irs] = -numpy.dot(sqC(len(sc), idxr, 1), sqC(len(sc), idxs, 0))
             irs += 1
     return tmp
 
@@ -179,9 +211,9 @@ def l1r13(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nc, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sc):
-        tmp[idxr] = numpy.dot(sqC(sc, idxr, 1), sgn)
+        tmp[idxr] = numpy.dot(sqC(len(sc), idxr, 1), sgn)
     return tmp
 
 
@@ -191,9 +223,9 @@ def l1r15(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nc, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sc):
-        tmp[idxr] = numpy.dot(sqC(sc, idxr, 0), sgn)
+        tmp[idxr] = numpy.dot(sqC(len(sc), idxr, 0), sgn)
     return tmp
 
 
@@ -205,22 +237,28 @@ def l1r16(h1e, h2e, sl, sc, sr):
     tmp = numpy.zeros((2 ** nc, 2 ** nc))
     # p^+q
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        # sgn \otimes ... \otimes sgn \otimes cre \otimes idn \otimes ... \otimes idn
+        op_p = sqC(len(sc), idxp, 1)
         for idxq, orbq in enumerate(sc):
-            op_q = sqC(sc, idxq, 0)
-    op = op_p.dot(op_q)
-    tmp += h1e[orbp, orbq] * op
+            # sgn \otimes ... \otimes sgn \otimes ann \otimes idn \otimes ... \otimes idn
+            op_q = sqC(len(sc), idxq, 0)
+            op = op_p.dot(op_q)
+            tmp += h1e[orbp, orbq] * op
     # p^+q^+rs
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        # sgn \otimes ... \otimes sgn \otimes cre \otimes idn \otimes ... \otimes idn
+        op_p = sqC(len(sc), idxp, 1)
         for idxq, orbq in enumerate(sc):
-            op_q = sqC(sc, idxq, 1)
+            # sgn \otimes ... \otimes sgn \otimes cre \otimes idn \otimes ... \otimes idn
+            op_q = sqC(len(sc), idxq, 1)
             if orbp < orbq:
                 op_pq = op_p.dot(op_q)
                 for idxr, orbr in enumerate(sc):
-                    op_r = sqC(sc, idxr, 0)
+                    # sgn \otimes ... \otimes sgn \otimes ann \otimes idn \otimes ... \otimes idn
+                    op_r = sqC(len(sc), idxr, 0)
                     for idxs, orbs in enumerate(sc):
-                        op_s = sqC(sc, idxs, 0)
+                        # sgn \otimes ... \otimes sgn \otimes ann \otimes idn \otimes ... \otimes idn
+                        op_s = sqC(len(sc), idxs, 0)
                         if orbr < orbs:
                             op_rs = op_r.dot(op_s)
                             op = op_pq.dot(op_rs)
@@ -238,7 +276,7 @@ def l2r16(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nc, 1, 2 ** nc, 2 ** nc))
     for idxr, orbr in enumerate(sc):
-        tmp[idxr, 0] = sqC(sc, idxr, 1)
+        tmp[idxr, 0] = sqC(len(sc), idxr, 1)
     return tmp
 
 
@@ -251,7 +289,7 @@ def l3r2(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nr, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sr):
         tmp[idxr, idxr] = sgn.copy()
     return tmp
@@ -267,7 +305,7 @@ def l4r16(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nc, 1, 2 ** nc, 2 ** nc))
     for idxr, orbr in enumerate(sc):
-        tmp[idxr, 0] = sqC(sc, idxr, 0)
+        tmp[idxr, 0] = sqC(len(sc), idxr, 0)
     return tmp
 
 
@@ -280,7 +318,7 @@ def l5r3(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nr, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sr):
         tmp[idxr, idxr] = sgn.copy()
     return tmp
@@ -302,7 +340,7 @@ def l6r16(h1e, h2e, sl, sc, sr):
     for idxr, orbr in enumerate(sc):
         for idxs, orbs in enumerate(sc):
             if orbr < orbs:
-                tmp[irs, 0] = numpy.dot(sqC(sc, idxr, 1), sqC(sc, idxs, 1))
+                tmp[irs, 0] = numpy.dot(sqC(len(sc), idxr, 1), sqC(len(sc), idxs, 1))
                 irs += 1
     return tmp
 
@@ -316,10 +354,10 @@ def l7r2(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nc, nr, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sc):
         for idxs, orbs in enumerate(sr):
-            tmp[idxr, idxs, idxs] = numpy.dot(sqC(sc, idxr, 1), sgn)
+            tmp[idxr, idxs, idxs] = numpy.dot(sqC(len(sc), idxr, 1), sgn)
     tmp = tmp.reshape((nc * nr, nr, 2 ** nc, 2 ** nc))
     return tmp
 
@@ -337,7 +375,7 @@ def l8r4(h1e, h2e, sl, sc, sr):
         print('error: mpo_consw.l8r4')
         exit()
     tmp = numpy.zeros((nr2, nr2, 2 ** nc, 2 ** nc))
-    idn = idnC(sc)
+    idn = idnC(len(sc))
     for irs in range(nr2):
         tmp[irs, irs] = idn.copy()
     return tmp
@@ -359,7 +397,7 @@ def l9r16(h1e, h2e, sl, sc, sr):
     for idxr, orbr in enumerate(sc):
         for idxs, orbs in enumerate(sc):
             if orbr < orbs:
-                tmp[irs, 0] = numpy.dot(sqC(sc, idxr, 0), sqC(sc, idxs, 0))
+                tmp[irs, 0] = numpy.dot(sqC(len(sc), idxr, 0), sqC(len(sc), idxs, 0))
                 irs += 1
     return tmp
 
@@ -373,10 +411,10 @@ def l10r3(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nc, nr, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sc):
         for idxs, orbs in enumerate(sr):
-            tmp[idxr, idxs, idxs] = numpy.dot(sqC(sc, idxr, 0), sgn)
+            tmp[idxr, idxs, idxs] = numpy.dot(sqC(len(sc), idxr, 0), sgn)
     tmp = tmp.reshape((nc * nr, nr, 2 ** nc, 2 ** nc))
     return tmp
 
@@ -394,7 +432,7 @@ def l11r5(h1e, h2e, sl, sc, sr):
         print('error: mpo_consw.l11r5')
         exit()
     tmp = numpy.zeros((nr2, nr2, 2 ** nc, 2 ** nc))
-    idn = idnC(sc)
+    idn = idnC(len(sc))
     for irs in range(nr2):
         tmp[irs, irs] = idn.copy()
     return tmp
@@ -409,7 +447,7 @@ def l12r6(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sl):
         tmp[idxr, idxr] = sgn.copy()
     return tmp
@@ -421,9 +459,9 @@ def l12r16(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, 1, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        op_p = sqC(len(sc), idxp, 1)
         for idxq, orbq in enumerate(sl):
             tmp[idxq, 0] += h1e[orbp, orbq] * op_p
     return tmp
@@ -438,9 +476,9 @@ def l13r2(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxs, orbs in enumerate(sc):
-        op_s = sqC(sc, idxs, 0)
+        op_s = sqC(len(sc), idxs, 0)
         op = op_s.dot(sgn)
         for idxp, orbp in enumerate(sl):
             for idxr, orbr in enumerate(sl):
@@ -456,9 +494,9 @@ def l13r3(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sc):
-        op_q = sqC(sc, idxq, 1)
+        op_q = sqC(len(sc), idxq, 1)
         op = op_q.dot(sgn)
         for idxp, orbp in enumerate(sl):
             for idxr, orbr in enumerate(sl):
@@ -479,7 +517,7 @@ def l13r8(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl * nl, nl * nl, 2 ** nc, 2 ** nc))
-    idn = idnC(sc)
+    idn = idnC(len(sc))
     for ipr in range(nl * nl):
         tmp[ipr, ipr] = idn.copy()
     return tmp
@@ -492,9 +530,9 @@ def l13r16(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, 1, 2 ** nc, 2 ** nc))
     for idxq, orbq in enumerate(sc):
-        op_q = sqC(sc, idxq, 1)
+        op_q = sqC(len(sc), idxq, 1)
         for idxs, orbs in enumerate(sc):
-            op_s = sqC(sc, idxs, 0)
+            op_s = sqC(len(sc), idxs, 0)
             op = op_q.dot(op_s)
             for idxp, orbp in enumerate(sl):
                 for idxr, orbr in enumerate(sl):
@@ -512,11 +550,11 @@ def l14r2(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxr, orbr in enumerate(sc):
-        op_r = sqC(sc, idxr, 0)
+        op_r = sqC(len(sc), idxr, 0)
         for idxs, orbs in enumerate(sc):
-            op_s = sqC(sc, idxs, 0)
+            op_s = sqC(len(sc), idxs, 0)
             if orbr < orbs:
                 op = op_r.dot(op_s.dot(sgn))
                 for idxp, orbp in enumerate(sl):
@@ -531,11 +569,11 @@ def l14r3(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sc):
-        op_q = sqC(sc, idxq, 1)
+        op_q = sqC(len(sc), idxq, 1)
         for idxr, orbr in enumerate(sc):
-            op_r = sqC(sc, idxr, 0)
+            op_r = sqC(len(sc), idxr, 0)
             op = op_q.dot(op_r.dot(sgn))
             for idxp, orbp in enumerate(sl):
                 for idxs, orbs in enumerate(sr):
@@ -553,7 +591,7 @@ def l14r5(h1e, h2e, sl, sc, sr):
         exit()
     tmp = numpy.zeros((nl, int(nr * (nr - 1) / 2), 2 ** nc, 2 ** nc))
     for idxq, orbq in enumerate(sc):
-        op_q = sqC(sc, idxq, 1)
+        op_q = sqC(len(sc), idxq, 1)
         for idxp, orbp in enumerate(sl):
             irs = 0
             for idxr, orbr in enumerate(sr):
@@ -575,7 +613,7 @@ def l14r9(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, nc, 2 ** nc, 2 ** nc))
     for idxr, orbr in enumerate(sc):
-        op_r = sqC(sc, idxr, 0)
+        op_r = sqC(len(sc), idxr, 0)
         for idxp, orbp in enumerate(sl):
             tmp[idxp, idxp, idxr] = -op_r
     tmp = tmp.reshape((nl, nl * nc, 2 ** nc, 2 ** nc))
@@ -588,7 +626,7 @@ def l14r12(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sl):
         tmp[idxq, idxq] = sgn.copy()
     return tmp
@@ -601,11 +639,11 @@ def l14r16(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nl, 1, 2 ** nc, 2 ** nc))
     for idxq, orbq in enumerate(sc):
-        op_q = sqC(sc, idxq, 1)
+        op_q = sqC(len(sc), idxq, 1)
         for idxr, orbr in enumerate(sc):
-            op_r = sqC(sc, idxr, 0)
+            op_r = sqC(len(sc), idxr, 0)
             for idxs, orbs in enumerate(sc):
-                op_s = sqC(sc, idxs, 0)
+                op_s = sqC(len(sc), idxs, 0)
                 # r < s
                 if orbr < orbs:
                     op = op_q.dot(op_r.dot(op_s))
@@ -623,11 +661,11 @@ def l15r2(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        op_p = sqC(len(sc), idxp, 1)
         for idxs, orbs in enumerate(sc):
-            op_s = sqC(sc, idxs, 0)
+            op_s = sqC(len(sc), idxs, 0)
             op = op_p.dot(op_s.dot(sgn))
             for idxr, orbr in enumerate(sl):
                 for idxq, orbq in enumerate(sr):
@@ -641,11 +679,11 @@ def l15r3(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nr, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sc):
-        op_q = sqC(sc, idxq, 1)
+        op_q = sqC(len(sc), idxq, 1)
         for idxp, orbp in enumerate(sc):
-            op_p = sqC(sc, idxp, 1)
+            op_p = sqC(len(sc), idxp, 1)
             if orbp < orbq:
                 op = op_p.dot(op_q.dot(sgn))
                 for idxr, orbr in enumerate(sl):
@@ -664,7 +702,7 @@ def l15r4(h1e, h2e, sl, sc, sr):
         exit()
     tmp = numpy.zeros((nl, int(nr * (nr - 1) / 2), 2 ** nc, 2 ** nc))
     for idxs, orbs in enumerate(sc):
-        op_s = sqC(sc, idxs, 0)
+        op_s = sqC(len(sc), idxs, 0)
         for idxr, orbr in enumerate(sl):
             ipq = 0
             for idxp, orbp in enumerate(sr):
@@ -686,7 +724,7 @@ def l15r10(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nl, nc, nl, 2 ** nc, 2 ** nc))
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        op_p = sqC(len(sc), idxp, 1)
         for idxr, orbr in enumerate(sl):
             tmp[idxr, idxp, idxr] = op_p
     tmp = tmp.reshape((nl, nc * nl, 2 ** nc, 2 ** nc))
@@ -699,7 +737,7 @@ def l15r14(h1e, h2e, sl, sc, sr):
     nc = len(sc)
     nr = len(sr)
     tmp = numpy.zeros((nl, nl, 2 ** nc, 2 ** nc))
-    sgn = sgnC(sc)
+    sgn = sgnC(len(sc))
     for idxq, orbq in enumerate(sl):
         tmp[idxq, idxq] = sgn.copy()
     return tmp
@@ -712,12 +750,12 @@ def l15r16(h1e, h2e, sl, sc, sr):
     nr = len(sr)
     tmp = numpy.zeros((nl, 1, 2 ** nc, 2 ** nc))
     for idxp, orbp in enumerate(sc):
-        op_p = sqC(sc, idxp, 1)
+        op_p = sqC(len(sc), idxp, 1)
         for idxq, orbq in enumerate(sc):
-            op_q = sqC(sc, idxq, 1)
+            op_q = sqC(len(sc), idxq, 1)
             if orbp < orbq:
                 for idxs, orbs in enumerate(sc):
-                    op_s = sqC(sc, idxs, 0)
+                    op_s = sqC(len(sc), idxs, 0)
                     op = op_p.dot(op_q.dot(op_s))
                     for idxr, orbr in enumerate(sl):
                         tmp[idxr, 0] += h2e[orbp, orbq, orbr, orbs] * op
@@ -729,5 +767,5 @@ def l15r16(h1e, h2e, sl, sc, sr):
 # ------------------
 # w[16,16]=I
 def l16r16(h1e, h2e, sl, sc, sr):
-    tmp = idnC(sc)
+    tmp = idnC(len(sc))
     return tmp

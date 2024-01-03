@@ -378,7 +378,9 @@ if __name__ == '__main__':
     k = 10
     h1e, h2e = genRandomH(k)
     partition = [[0, 1, 2, 3], [4, 5], [6, 7], [8, 9]]
+    # partition = [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]]
     ngroups, wfacs = directHmpo(h1e, h2e, partition, isym=0, debug=True)
+    # ngroups, wfacs = directHmpo(h1e, h2e, None, isym=0, debug=True)
     print(ngroups)
     for i in range(ngroups):
         print(wfacs[i].shape)
